@@ -1,0 +1,260 @@
+# ===========================================
+# PhishSight Development Environment
+# Unified docker-compose for frontend + backend + site
+# ===========================================
+# 
+# Usage:
+#   docker compose -f docker-compose-dev.yml up --build
+#
+# Optional: Create .env file to override defaults
+#   cp .env.dev.example .env
+#
+# Services:
+#   - Site:      http://localhost:3003 (marketing/landing page)
+#   - Frontend:  http://localhost:3002 (main app)
+#   - Backend:   http://localhost:3001 (API)
+#   - API Docs:  http://localhost:3001/api/docs
+#   - Postgres:  localhost:5432
+#   - Redis:     localhost:6379
+#
+# ===========================================
+
+services:
+  # ===========================================
+  # PostgreSQL Database
+  # ===========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: phishsight-dev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-phishsight}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-phishsight_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-phishsight}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-phishsight}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - phishsight-dev
+
+  # ===========================================
+  # Redis Cache
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: phishsight-dev-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_dev_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - phishsight-dev
+
+  # ===========================================
+  # PhishSight Backend API
+  # ===========================================
+  api:
+    build:
+      context: ../phishsight-app-backend
+      dockerfile: Dockerfile.dev
+    container_name: phishsight-dev-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-phishsight}:${POSTGRES_PASSWORD:-phishsight_dev_password}@postgres:5432/${POSTGRES_DB:-phishsight}?schema=public
+      
+      # Redis
+      REDIS_URL: redis://redis:6379
+      
+      # JWT (dev secrets - change in production!)
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-in-production-abc123}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-in-production-xyz789}
+      JWT_ACCESS_EXPIRY: 15m
+      JWT_REFRESH_EXPIRY: 7d
+      
+      # Super Admin
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-admin@phishsight.com}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-ChangeThisPassword123!}
+      
+      # External Services (optional)
+      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-deepseek/deepseek-chat}
+      
+      # Cloudflare Turnstile (bot protection)
+      TURNSTILE_SECRETKEY: ${TURNSTILE_SECRETKEY:-}
+      
+      # ZeptoMail Email Configuration
+      ZEPTOMAIL_API_KEY: ${ZEPTOMAIL_API_KEY:-}
+      ZEPTOMAIL_HOST: ${ZEPTOMAIL_HOST:-smtp.zeptomail.com}
+      ZEPTOMAIL_PORT: ${ZEPTOMAIL_PORT:-587}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-PhishSight Team}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@mail.phishsight.com}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-support@phishsight.com}
+      
+      # App URLs for email links
+      APP_URL: ${APP_URL:-http://localhost:3002}
+      APP_NAME: ${APP_NAME:-PhishSight}
+      
+      # OCR
+      PHISHING_OCR_ENABLED: "true"
+      
+      # Logging
+      LOG_LEVEL: debug
+      
+      # CORS - allow frontend and marketing site
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3002}
+      MARKETING_SITE_URL: ${MARKETING_SITE_URL:-http://localhost:3003}
+      
+      # Sales email for lead notifications
+      SALES_EMAIL: ${SALES_EMAIL:-support@phishsight.com}
+    ports:
+      - "${API_PORT:-3001}:3001"
+    volumes:
+      # Mount source for hot-reloading
+      - ./phishsight-app-backend/src:/app/src:ro
+      - ./phishsight-app-backend/prisma:/app/prisma
+      - ./phishsight-app-backend/tsconfig.json:/app/tsconfig.json:ro
+      - ./phishsight-app-backend/package.json:/app/package.json:ro
+      # Persist data directories
+      - ./phishsight-app-backend/data:/app/data
+      - ./phishsight-app-backend/logs:/app/logs
+      # Named volume for node_modules (persists across rebuilds, allows running commands)
+      - api_node_modules:/app/node_modules
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    networks:
+      - phishsight-dev
+
+  # ===========================================
+  # PhishSight Frontend App
+  # ===========================================
+  app:
+    build:
+      context: ../phishsight-app
+      dockerfile: Dockerfile.dev
+    container_name: phishsight-dev-app
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      # API proxy destination (for next.config.js rewrites)
+      NEXT_PUBLIC_API_URL: http://api:3001
+      # Hostname binding for Next.js dev server
+      HOSTNAME: 0.0.0.0
+      # Cloudflare Turnstile (bot protection)
+      NEXT_PUBLIC_TURNSTILE_SITEKEY: ${NEXT_PUBLIC_TURNSTILE_SITEKEY:-}
+      # SEO Configuration
+      NEXT_PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3002}
+      NEXT_PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:3003}
+      # Analytics
+      NEXT_PUBLIC_GA_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_MEASUREMENT_ID_APP:-G-KR8PGFFQPM}
+      NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION: ${NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION:-}
+    ports:
+      - "${APP_PORT:-3002}:3002"
+    volumes:
+      # Mount source for hot-reloading
+      - ./phishsight-app/app:/app/app
+      - ./phishsight-app/components:/app/components
+      - ./phishsight-app/lib:/app/lib
+      - ./phishsight-app/public:/app/public
+      - ./phishsight-app/tailwind.config.ts:/app/tailwind.config.ts:ro
+      - ./phishsight-app/tsconfig.json:/app/tsconfig.json:ro
+      - ./phishsight-app/next.config.js:/app/next.config.js:ro
+      - ./phishsight-app/postcss.config.js:/app/postcss.config.js:ro
+      # Exclude node_modules from mount
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - phishsight-dev
+
+  # ===========================================
+  # PhishSight Marketing Site
+  # ===========================================
+  site:
+    build:
+      context: ../phishsight-site
+      dockerfile: Dockerfile.dev
+    container_name: phishsight-dev-site
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      NEXT_TELEMETRY_DISABLED: 1
+      # API endpoint for form submissions (lead gen)
+      NEXT_PUBLIC_API_URL: ${SITE_API_URL:-http://localhost:3001}
+      # App dashboard URL for CTAs
+      NEXT_PUBLIC_APP_URL: ${SITE_APP_URL:-http://localhost:3002}
+      # Cloudflare Turnstile (bot protection for forms)
+      NEXT_PUBLIC_TURNSTILE_SITEKEY: ${NEXT_PUBLIC_TURNSTILE_SITEKEY:-}
+      # SEO Configuration
+      NEXT_PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:3003}
+      # Analytics
+      NEXT_PUBLIC_GA_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_MEASUREMENT_ID_SITE:-G-8Y7KFEFB8H}
+      NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION: ${NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION:-}
+    ports:
+      - "${SITE_PORT:-3003}:3000"
+    volumes:
+      # Mount source for hot-reloading
+      - ./phishsight-site/app:/app/app
+      - ./phishsight-site/components:/app/components
+      - ./phishsight-site/lib:/app/lib
+      - ./phishsight-site/public:/app/public
+      - ./phishsight-site/tailwind.config.ts:/app/tailwind.config.ts:ro
+      - ./phishsight-site/tsconfig.json:/app/tsconfig.json:ro
+      - ./phishsight-site/next.config.js:/app/next.config.js:ro
+      - ./phishsight-site/postcss.config.js:/app/postcss.config.js:ro
+      # Exclude node_modules from mount
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - phishsight-dev
+
+# ===========================================
+# Networks
+# ===========================================
+networks:
+  phishsight-dev:
+    driver: bridge
+
+# ===========================================
+# Volumes
+# ===========================================
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+  api_node_modules:
+    driver: local

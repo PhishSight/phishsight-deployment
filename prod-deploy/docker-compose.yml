@@ -1,0 +1,281 @@
+# ===========================================
+# PhishSight Production Environment
+# Unified docker-compose for frontend + backend
+# ===========================================
+# 
+# Usage:
+#   cp .env.prod.example .env  # First time - configure all required values!
+#   docker compose -f docker-compose-prod.yml up --build -d
+#
+# Services:
+#   - App:       http://localhost:3000 (dashboard)
+#   - Site:      http://localhost:3003 (marketing site, optional)
+#   - Backend:   http://localhost:3001 (API)
+#   - Postgres:  Internal only (not exposed)
+#   - Redis:     Internal only (not exposed)
+#
+# BUILD-TIME ENV VARS (IMPORTANT!):
+#   These Next.js NEXT_PUBLIC_* vars are baked in at build time:
+#   - TURNSTILE_SITEKEY: Cloudflare Turnstile site key
+#   - NEXT_PUBLIC_API_URL: Set via build args (internal Docker DNS)
+#   - NEXT_PUBLIC_APP_URL: For marketing site CTAs
+#   
+#   If you change these, you MUST rebuild: docker compose build --no-cache
+#
+# ===========================================
+
+services:
+  # ===========================================
+  # PostgreSQL Database
+  # ===========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: phishsight-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-phishsight}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - phishsight-internal
+    # Not exposing port in production - internal only
+
+  # ===========================================
+  # Redis Cache
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: phishsight-redis
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - phishsight-internal
+    # Not exposing port in production - internal only
+
+  # ===========================================
+  # PhishSight Backend API
+  # ===========================================
+  api:
+    build:
+      context: ../phishsight-app-backend
+      dockerfile: Dockerfile
+    container_name: phishsight-api
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-phishsight}?schema=public
+      
+      # Redis (with password)
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      
+      # JWT Secrets (REQUIRED - must be set in .env.prod)
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_EXPIRY: ${JWT_ACCESS_EXPIRY:-15m}
+      JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY:-7d}
+      
+      # Super Admin
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
+      
+      # External Services (optional)
+      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_API_URL: ${OPENROUTER_API_URL:-https://openrouter.ai/api/v1/chat/completions}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-deepseek/deepseek-chat}
+      
+      # Cloudflare Turnstile (bot protection)
+      TURNSTILE_SECRETKEY: ${TURNSTILE_SECRETKEY:-}
+      
+      # ZeptoMail Email Configuration
+      ZEPTOMAIL_API_KEY: ${ZEPTOMAIL_API_KEY}
+      ZEPTOMAIL_HOST: ${ZEPTOMAIL_HOST:-smtp.zeptomail.com}
+      ZEPTOMAIL_PORT: ${ZEPTOMAIL_PORT:-587}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-PhishSight Team}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@mail.phishsight.com}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-support@phishsight.com}
+      
+      # App URLs for email links
+      APP_URL: ${APP_URL}
+      APP_NAME: ${APP_NAME:-PhishSight}
+      
+      # OCR
+      PHISHING_OCR_ENABLED: ${PHISHING_OCR_ENABLED:-true}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      
+      # CORS
+      FRONTEND_URL: ${FRONTEND_URL}
+      MARKETING_SITE_URL: ${MARKETING_SITE_URL:-}
+      
+      # Sales/Support emails
+      SALES_EMAIL: ${SALES_EMAIL:-support@phishsight.com}
+      
+      # Rate Limiting
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
+      RATE_LIMIT_AUTHENTICATED_MAX: ${RATE_LIMIT_AUTHENTICATED_MAX:-1000}
+      RATE_LIMIT_ANALYSIS_MAX: ${RATE_LIMIT_ANALYSIS_MAX:-200}
+      
+      # Database Initialization (runs on startup)
+      # Set to true for first deployment, then set to false
+      RUN_SEED: ${RUN_SEED:-true}
+    ports:
+      - "${API_PORT:-3001}:3001"
+    volumes:
+      - api_data:/app/data
+      - api_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s  # Allow time for migrations and seeding
+      retries: 3
+    networks:
+      - phishsight-internal
+      - phishsight-public
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ===========================================
+  # PhishSight Frontend App
+  # ===========================================
+  app:
+    build:
+      context: ../phishsight-app
+      dockerfile: Dockerfile
+      args:
+        # Build-time env vars for Next.js (baked into the bundle)
+        NEXT_PUBLIC_API_URL: http://api:3001
+        NEXT_PUBLIC_APP_URL: ${PUBLIC_APP_URL:-https://app.phishsight.com}
+        NEXT_PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://phishsight.com}
+        NEXT_PUBLIC_GA_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_MEASUREMENT_ID_APP:-G-KR8PGFFQPM}
+        NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION: ${NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION:-}
+        # Turnstile site key must be passed at build time for Next.js
+        # Left side = ARG name in Dockerfile, Right side = value from .env
+        TURNSTILE_SITEKEY: ${NEXT_PUBLIC_TURNSTILE_SITEKEY:-}
+    container_name: phishsight-app
+    restart: always
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    networks:
+      - phishsight-internal
+      - phishsight-public
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ===========================================
+  # PhishSight Marketing Site (Optional)
+  # ===========================================
+  # Uncomment to deploy the marketing site
+  # site:
+  #   build:
+  #     context: ../phishsight-site
+  #     dockerfile: Dockerfile
+  #     args:
+  #       # Build-time env vars for Next.js (baked into the bundle)
+  #       NEXT_PUBLIC_API_URL: http://api:3001
+  #       NEXT_PUBLIC_APP_URL: ${PUBLIC_APP_URL:-https://app.phishsight.com}
+  #       NEXT_PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://phishsight.com}
+  #       NEXT_PUBLIC_GA_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_MEASUREMENT_ID_SITE:-G-8Y7KFEFB8H}
+  #       NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION: ${NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION:-}
+  #       NEXT_PUBLIC_TURNSTILE_SITEKEY: ${NEXT_PUBLIC_TURNSTILE_SITEKEY:-}
+  #   container_name: phishsight-site
+  #   restart: always
+  #   depends_on:
+  #     api:
+  #       condition: service_healthy
+  #   environment:
+  #     NODE_ENV: production
+  #     PORT: 3000
+  #     HOSTNAME: 0.0.0.0
+  #   ports:
+  #     - "${SITE_PORT:-3003}:3000"
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3000"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     start_period: 30s
+  #     retries: 3
+  #   networks:
+  #     - phishsight-internal
+  #     - phishsight-public
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'
+  #         memory: 256M
+  #       reservations:
+  #         cpus: '0.1'
+  #         memory: 128M
+
+# ===========================================
+# Networks
+# ===========================================
+networks:
+  phishsight-internal:
+    driver: bridge
+    internal: true
+  phishsight-public:
+    driver: bridge
+
+# ===========================================
+# Volumes
+# ===========================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  api_data:
+    driver: local
+  api_logs:
+    driver: local
