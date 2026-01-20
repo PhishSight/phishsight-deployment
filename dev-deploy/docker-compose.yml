@@ -4,7 +4,7 @@
 # ===========================================
 # 
 # Usage:
-#   docker compose -f docker-compose-dev.yml up --build
+#   docker compose up --build
 #
 # Optional: Create .env file to override defaults
 #   cp .env.dev.example .env
@@ -133,13 +133,13 @@ services:
       - "${API_PORT:-3001}:3001"
     volumes:
       # Mount source for hot-reloading
-      - ./phishsight-app-backend/src:/app/src:ro
-      - ./phishsight-app-backend/prisma:/app/prisma
-      - ./phishsight-app-backend/tsconfig.json:/app/tsconfig.json:ro
-      - ./phishsight-app-backend/package.json:/app/package.json:ro
+      - ../phishsight-app-backend/src:/app/src:ro
+      - ../phishsight-app-backend/prisma:/app/prisma
+      - ../phishsight-app-backend/tsconfig.json:/app/tsconfig.json:ro
+      - ../phishsight-app-backend/package.json:/app/package.json:ro
       # Persist data directories
-      - ./phishsight-app-backend/data:/app/data
-      - ./phishsight-app-backend/logs:/app/logs
+      - ../phishsight-app-backend/data:/app/data
+      - ../phishsight-app-backend/logs:/app/logs
       # Named volume for node_modules (persists across rebuilds, allows running commands)
       - api_node_modules:/app/node_modules
     healthcheck:
@@ -165,6 +165,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: development
+      PORT: 3002
       # API proxy destination (for next.config.js rewrites)
       NEXT_PUBLIC_API_URL: http://api:3001
       # Hostname binding for Next.js dev server
@@ -181,14 +182,14 @@ services:
       - "${APP_PORT:-3002}:3002"
     volumes:
       # Mount source for hot-reloading
-      - ./phishsight-app/app:/app/app
-      - ./phishsight-app/components:/app/components
-      - ./phishsight-app/lib:/app/lib
-      - ./phishsight-app/public:/app/public
-      - ./phishsight-app/tailwind.config.ts:/app/tailwind.config.ts:ro
-      - ./phishsight-app/tsconfig.json:/app/tsconfig.json:ro
-      - ./phishsight-app/next.config.js:/app/next.config.js:ro
-      - ./phishsight-app/postcss.config.js:/app/postcss.config.js:ro
+      - ../phishsight-app/app:/app/app
+      - ../phishsight-app/components:/app/components
+      - ../phishsight-app/lib:/app/lib
+      - ../phishsight-app/public:/app/public
+      - ../phishsight-app/tailwind.config.ts:/app/tailwind.config.ts:ro
+      - ../phishsight-app/tsconfig.json:/app/tsconfig.json:ro
+      - ../phishsight-app/next.config.js:/app/next.config.js:ro
+      - ../phishsight-app/postcss.config.js:/app/postcss.config.js:ro
       # Exclude node_modules from mount
       - /app/node_modules
       - /app/.next
@@ -227,14 +228,14 @@ services:
       - "${SITE_PORT:-3003}:3000"
     volumes:
       # Mount source for hot-reloading
-      - ./phishsight-site/app:/app/app
-      - ./phishsight-site/components:/app/components
-      - ./phishsight-site/lib:/app/lib
-      - ./phishsight-site/public:/app/public
-      - ./phishsight-site/tailwind.config.ts:/app/tailwind.config.ts:ro
-      - ./phishsight-site/tsconfig.json:/app/tsconfig.json:ro
-      - ./phishsight-site/next.config.js:/app/next.config.js:ro
-      - ./phishsight-site/postcss.config.js:/app/postcss.config.js:ro
+      - ../phishsight-site/app:/app/app
+      - ../phishsight-site/components:/app/components
+      - ../phishsight-site/lib:/app/lib
+      - ../phishsight-site/public:/app/public
+      - ../phishsight-site/tailwind.config.ts:/app/tailwind.config.ts:ro
+      - ../phishsight-site/tsconfig.json:/app/tsconfig.json:ro
+      - ../phishsight-site/next.config.js:/app/next.config.js:ro
+      - ../phishsight-site/postcss.config.js:/app/postcss.config.js:ro
       # Exclude node_modules from mount
       - /app/node_modules
       - /app/.next
