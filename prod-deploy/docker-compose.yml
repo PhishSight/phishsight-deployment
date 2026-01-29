@@ -96,6 +96,9 @@ services:
       JWT_ACCESS_EXPIRY: ${JWT_ACCESS_EXPIRY:-15m}
       JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY:-7d}
       
+      # Google OAuth (Sign in with Google)
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      
       # Super Admin
       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
       SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
@@ -133,7 +136,15 @@ services:
       
       # Sales/Support emails
       SALES_EMAIL: ${SALES_EMAIL:-support@phishsight.com}
-      
+
+      # AWS S3 Configuration (for avatar uploads and EML storage)
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
+      AWS_S3_BUCKET_EML: ${AWS_S3_BUCKET_EML:-}
+      AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT:-}
+
       # Rate Limiting
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
       RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
@@ -183,6 +194,8 @@ services:
         # Turnstile site key must be passed at build time for Next.js
         # Left side = ARG name in Dockerfile, Right side = value from .env
         TURNSTILE_SITEKEY: ${NEXT_PUBLIC_TURNSTILE_SITEKEY:-}
+        # Google OAuth Client ID for Sign in with Google
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
     container_name: phishsight-app
     restart: always
     depends_on:

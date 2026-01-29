@@ -93,6 +93,9 @@ services:
       JWT_ACCESS_EXPIRY: 15m
       JWT_REFRESH_EXPIRY: 7d
       
+      # Google OAuth (Sign in with Google)
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      
       # Super Admin
       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-admin@phishsight.com}
       SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-ChangeThisPassword123!}
@@ -186,6 +189,8 @@ services:
       # Analytics
       NEXT_PUBLIC_GA_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_MEASUREMENT_ID_APP:-G-KR8PGFFQPM}
       NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION: ${NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION:-}
+      # Google OAuth (Sign in with Google)
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
     ports:
       - "${APP_PORT:-3002}:3002"
     volumes:
