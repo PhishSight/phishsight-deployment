@@ -30,14 +30,14 @@ if [ "${1:-}" = "--clone-only" ]; then
 fi
 
 # Repository URLs
-BACKEND_REPO="git@github.com:OsamaMahmood/phishsight-app-backend.git"
-SITE_REPO="git@github.com:OsamaMahmood/phishsight-site.git"
-APP_REPO="git@github.com:OsamaMahmood/phishsight-app.git"
+BACKEND_REPO="git@github.com:PhishSight/brain.git"
+SITE_REPO="git@github.com:PhishSight/phishsight.com.git"
+APP_REPO="git@github.com:PhishSight/app.git"
 
 # Directory names
-BACKEND_DIR="phishsight-app-backend"
-SITE_DIR="phishsight-site"
-APP_DIR="phishsight-app"
+BACKEND_DIR="brain"
+SITE_DIR="phishsight.com"
+APP_DIR="app"
 
 echo -e "${BLUE}"
 echo "╔═══════════════════════════════════════════════════════════╗"
@@ -155,8 +155,8 @@ if [ "$all_present" = true ]; then
     echo -e "${BLUE}Next steps:${NC}"
     echo ""
     echo "  1. Copy the environment file:"
-    echo -e "     ${YELLOW}cp .env.dev.example .env${NC}  (for development)"
-    echo -e "     ${YELLOW}cp .env.prod.example .env${NC} (for production)"
+    echo -e "     ${YELLOW}cp .env.example .env${NC}  (for development)"
+    echo -e "     ${YELLOW}cp .env.example .env${NC} (for production)"
     echo ""
     echo "  2. Edit .env and configure your settings"
     echo ""
