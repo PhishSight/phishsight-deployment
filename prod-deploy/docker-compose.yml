@@ -5,7 +5,7 @@
 # 
 # Usage:
 #   cp .env.prod.example .env  # First time - configure all required values!
-#   docker compose -f docker-compose-prod.yml up --build -d
+#   CACHEBUST=$(date +%s) docker compose up --build -d
 #
 # Services:
 #   - App:       http://localhost:3000 (dashboard)
@@ -73,6 +73,11 @@ services:
     build:
       context: ../phishsight-app-backend
       dockerfile: Dockerfile
+      args:
+        # Bust Docker layer cache for source code on every build.
+        # Pass a unique value (e.g., timestamp) to force recompilation:
+        #   CACHEBUST=$(date +%s) docker compose up --build -d
+        CACHEBUST: ${CACHEBUST:-1}
     container_name: phishsight-api
     restart: always
     depends_on:
@@ -144,6 +149,16 @@ services:
       
       # Sales/Support emails
       SALES_EMAIL: ${SALES_EMAIL:-support@phishsight.com}
+
+      # Paddle Billing
+      PADDLE_API_KEY: ${PADDLE_API_KEY:-}
+      PADDLE_CLIENT_TOKEN: ${NEXT_PUBLIC_PADDLE_CLIENT_TOKEN:-}
+      PADDLE_WEBHOOK_SECRET: ${PADDLE_WEBHOOK_SECRET:-}
+      PADDLE_ENVIRONMENT: ${PADDLE_ENVIRONMENT:-sandbox}
+      PADDLE_PRICE_STARTER_MONTHLY: ${PADDLE_PRICE_STARTER_MONTHLY:-}
+      PADDLE_PRICE_STARTER_ANNUAL: ${PADDLE_PRICE_STARTER_ANNUAL:-}
+      PADDLE_PRICE_PROFESSIONAL_MONTHLY: ${PADDLE_PRICE_PROFESSIONAL_MONTHLY:-}
+      PADDLE_PRICE_PROFESSIONAL_ANNUAL: ${PADDLE_PRICE_PROFESSIONAL_ANNUAL:-}
       
       # Rate Limiting
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
@@ -214,6 +229,9 @@ services:
         TURNSTILE_SITEKEY: ${NEXT_PUBLIC_TURNSTILE_SITEKEY:-}
         # Google OAuth Client ID for Sign in with Google
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
+        # Paddle Billing (client-side)
+        NEXT_PUBLIC_PADDLE_CLIENT_TOKEN: ${NEXT_PUBLIC_PADDLE_CLIENT_TOKEN:-}
+        NEXT_PUBLIC_PADDLE_ENVIRONMENT: ${NEXT_PUBLIC_PADDLE_ENVIRONMENT:-sandbox}
     container_name: phishsight-app
     restart: always
     depends_on:
